@@ -26,6 +26,7 @@
         [riemann.campfire :only [campfire]]
         [riemann.librato :only [librato-metrics]]
         [riemann.statuspageio :only [statuspageio]]
+        [riemann.newrelic :only [newrelic]]
         riemann.streams))
 
 (def core "The currently running core."

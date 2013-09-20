@@ -39,6 +39,7 @@
     [slingshot "0.10.2"]
     [clj-campfire "2.1.0"]
     [less-awful-ssl "0.1.0"]
+    [com.newrelic.agent.java/newrelic-api "2.17.2"]
   ]
   :plugins [[codox "0.6.1"]
             [lein-rpm "0.0.5"]]
@@ -62,4 +63,5 @@
 ;  :aot [riemann.bin]
   :main riemann.bin
   :codox {:output-dir "site/api"}
+  ;:jvm-opts ["-javaagent:/usr/local/etc/newrelic/newrelic.jar"]
 )
