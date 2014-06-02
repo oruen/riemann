@@ -25,7 +25,7 @@
            [org.jboss.netty.handler.execution
             OrderedMemoryAwareThreadPoolExecutor]
            [org.jboss.netty.handler.ssl SslHandler])
-  (:require [less-awful-ssl.core :as ssl]
+  (:require [less.awful.ssl :as ssl]
             [interval-metrics.core :as metrics])
   (:use [clojure.tools.logging :only [info warn]]
         [interval-metrics.measure :only [measure-latency]]
@@ -65,7 +65,7 @@
           (handler @core stats message-event)
           (catch java.nio.channels.ClosedChannelException e
             (warn "channel closed"))))
-    
+
     (exceptionCaught [context ^ExceptionEvent exception-event]
       (let [cause (.getCause exception-event)]
         (when-not (instance? ClosedChannelException cause)

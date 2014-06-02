@@ -50,7 +50,7 @@
               (when thingy
                 (try (close thingy)
                   (catch Throwable t
-                    (warn "Closing" thingy "threw" t)))
+                    (warn t "Closing" thingy "threw")))
                 (future (grow this)))))
 
 (defn fixed-pool
@@ -78,14 +78,16 @@
    (let [^int size            (or (:size opts) (* 2 (.availableProcessors
                                                       (Runtime/getRuntime))))
          regenerate-interval  (or (:regenerate-interval opts) 5)
-         block-start          (or (:block-start opts) true)
+         block-start          (get opts :block-start true)
          pool (FixedQueuePool.
                 (LinkedBlockingQueue. size)
                 open
                 close
                 regenerate-interval)
-         openers (map (fn open-pool [_] (future (grow pool)))
-                      (range size))]
+         openers (doall
+                   (map (fn open-pool [_]
+                          (future (grow pool)))
+                        (range size)))]
      (when block-start
        (doseq [worker openers] @worker))
      pool)))

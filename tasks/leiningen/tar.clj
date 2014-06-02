@@ -52,7 +52,7 @@
 
     ; Config
     (.mkdirs (file dir "etc"))
-    (copy (file (:root project) "pkg" "riemann.config")
+    (copy (file (:root project) "pkg" "tar" "riemann.config")
           (file dir "etc" "riemann.config"))
 
     dir))
@@ -62,6 +62,17 @@
   [file string]
   (with-open [w (writer file)]
     (.write w (str (trim-newline string) "\n"))))
+
+(defn md5
+  "Computes the md5 checksum of a file. Returns a hex string."
+  [file]
+  (-> (->> file
+       str
+       (sh "md5sum")
+       :out)
+      (split #" ")
+      first
+      trim))
 
 (defn compress
   "Convert given package directory to a .tar.bz2."
@@ -75,12 +86,9 @@
                        filename))]
     (with-sh-dir (.getParent tar-dir)
                  (print (:err (sh "tar" "cvjf" tarball (.getName tar-dir)))))
+
     (write (str tarball ".md5")
-      (let [checksum
-            (trim (first (split (:out (sh "md5sum" (str tarball))) #" ")))]
-        (str checksum
-          " "
-          filename)))))
+           (str (md5 tarball) " " filename))))
 
 (defn tar
   ([project] (tar project true))

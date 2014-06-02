@@ -3,7 +3,8 @@
   (:use [clojure.java.shell :only [sh]]
         [clojure.java.io :only [file delete-file writer copy]]
         [clojure.string :only [join capitalize trim-newline replace]]
-        [leiningen.uberjar :only [uberjar]])
+        [leiningen.uberjar :only [uberjar]]
+        [leiningen.tar :only [md5]])
   (:import java.text.SimpleDateFormat
            java.util.Date))
 
@@ -69,8 +70,8 @@
     ; Meta
     (.mkdirs (file dir "DEBIAN"))
     (write (file dir "DEBIAN" "control") (control project))
-    (write (file dir "DEBIAN" "conffiles") 
-           (join "\n" ["/etc/riemann/riemann.config"]))
+    (write (file dir "DEBIAN" "conffiles")
+           (join "\n" ["/etc/riemann/riemann.config" "/etc/default/riemann"]))
 
     ; Preinst
     (copy (file (:root project) "pkg" "deb" "preinst.sh")
@@ -99,7 +100,7 @@
 
     ; Config
     (.mkdirs (file dir "etc" "riemann"))
-    (copy (file (:root project) "pkg" "riemann.config")
+    (copy (file (:root project) "pkg" "deb" "riemann.config")
           (file dir "etc" "riemann" "riemann.config"))
 
     ; defaults file
@@ -121,11 +122,12 @@
   (print (:err (sh "dpkg" "--build" 
                    (str deb-dir) 
                    (str (file (:root project) "target")))))
-  (let [deb-file (file (:root project) "target" (str (:name project) "_"
-                                                     (get-version project) "_"
-                                                     "all" ".deb"))]
+  (let [deb-file-name (str (:name project) "_"
+                           (get-version project) "_"
+                           "all" ".deb")
+        deb-file (file (:root project) "target" deb-file-name)]
     (write (str deb-file ".md5")
-           (:out (sh "md5sum" (str deb-file))))))
+           (str (md5 deb-file) " " deb-file-name))))
 
 (defn fatdeb
   ([project] (fatdeb project true))

@@ -5,7 +5,7 @@
             riemann.time
             riemann.pubsub)
   (:use clojure.tools.logging)
-  (:gen-class))
+  (:gen-class :name riemann.bin))
 
 (def config-file
   "The configuration file loaded by the bin tool" 
@@ -49,6 +49,7 @@
       (get (re-find #"^(\d+).*" name) 1)
       (catch Exception e name))))
 
+(println "loading bin")(flush)
 (defn -main
   "Start Riemann. Loads a configuration file from the first of its args."
   [& argv]

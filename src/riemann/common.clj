@@ -14,6 +14,7 @@
             [clojure.java.io :as io])
   (:use [clojure.string :only [split join]]
         [riemann.time :only [unix-time]]
+        [clojure.java.shell :only [sh]]
         clojure.tools.logging
         riemann.codec
         gloss.core
@@ -28,14 +29,38 @@
   "Wraps body in an implicit (do), and logs a deprecation notice when invoked."
   [comment & body]
   `(do
-     (info ~(str "Deprecated: " comment))
+     (info ~(str "Deprecated: "
+                 (format "<%s:%s> " *file* (:line (meta &form)))
+                 comment))
      ~@body))
 
+(def hostname-refresh-interval
+  "How often to allow shelling out to hostname (1), in seconds."
+  60)
+
+(defn get-hostname
+  "Fetches the hostname by shelling out to hostname (1), whenever the given age
+  is stale enough. If the given age is recent, as defined by
+  hostname-refresh-interval, returns age and val instead."
+  [[age val]]
+  (if (and val (<= (* 1000 hostname-refresh-interval)
+                   (- (System/currentTimeMillis) age)))
+   [age val]
+   [(System/currentTimeMillis)
+    (let [{:keys [exit out]} (sh "hostname")]
+      (if (= exit 0)
+        (.trim out)))]))
+
 ; Platform
-(defn localhost
-  "Returns the local host name."
-  []
-  (.. InetAddress getLocalHost getHostName))
+(let [cache (atom [nil nil])]
+  (defn localhost
+    "Returns the local host name."
+    []
+    (if (re-find #"^Windows" (System/getProperty "os.name"))
+      (or (System/getenv "COMPUTERNAME") "localhost")
+      (or (System/getenv "HOSTNAME")
+          (second (swap! cache get-hostname))
+          "localhost"))))
 
 ; Times
 (defn time-at
@@ -52,9 +77,11 @@
 (defn iso8601->unix
   "Transforms ISO8601 strings to unix timestamps."
   [iso8601]
-  (->> iso8601
-    (clj-time.format/parse (:date-time-parser clj-time.format/formatters))
-    (clj-time.coerce/to-long)))
+  (-> (->> iso8601
+          (clj-time.format/parse (:date-time-parser clj-time.format/formatters))
+          (clj-time.coerce/to-long))
+      (/ 1000)
+      long))
 
 ; Events
 (defn post-load-event
@@ -138,6 +165,11 @@
   (when string
     (re-find re string)))
 
+(defn map-matches?
+  "Does the given map pattern match obj?"
+  [pat obj]
+    (every? (fn [[k v]] (match v (get obj k))) pat))
+
 ; Matching
 (extend-protocol Match
   ; Regexes are matched against strings.
@@ -152,10 +184,25 @@
   (match [f obj]
          (f obj))
 
+  ; Map types 
+  clojure.lang.PersistentArrayMap
+  (match [pat obj] (map-matches? pat obj))
+
+  clojure.lang.PersistentHashMap
+  (match [pat obj] (map-matches? pat obj))
+
+  clojure.lang.PersistentTreeMap
+  (match [pat obj] (map-matches? pat obj))
+
   ; Falls back to object equality
   java.lang.Object
   (match [pred object]
-         (= pred object)))
+         (= pred object))
+
+  ; Nils match nils only.
+  nil
+  (match [_ object]
+    (nil? object)))
 
 ; Vector set operations
 (defn member?
@@ -230,7 +277,9 @@
               (:host event) " "
               (:service event) " "
               (:state event) " ("
-              (:metric event) ")\n"
+              (if (ratio? (:metric event))
+                (double (:metric event))
+                (:metric event)) ")\n"
               "Tags: [" (join ", " (:tags event)) "]"
               "\n"
               "Custom Attributes: " (custom-attributes event)

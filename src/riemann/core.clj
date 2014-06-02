@@ -1,12 +1,12 @@
 (ns riemann.core
   "Binds together an index, servers, and streams."
   (:use [riemann.time :only [unix-time]]
-        [riemann.common :only [localhost event]]
+        [riemann.common :only [deprecated localhost event]]
         clojure.tools.logging
         [riemann.instrumentation :only [Instrumented]])
   (:require riemann.streams
-            [riemann.service :as service]
-            [riemann.index :as index]
+            [riemann.service :as service :refer [Service ServiceEquiv]]
+            [riemann.index :as index :refer [Index]]
             [riemann.pubsub :as ps]
             [riemann.instrumentation :as instrumentation]
             clojure.set))
@@ -41,7 +41,8 @@
         (try
           ; Take events from core and instrumented services
           (let [base (event {:host (localhost)
-                             :ttl  (* 2 interval)})
+                             ; Default TTL of 2 intervals, and convert ms to s.
+                             :ttl  (long (/ interval 500))})
                 events (mapcat instrumentation/events
                             (concat
                               [core
@@ -149,7 +150,7 @@
                  (clojure.set/difference old-services merged-services)))
 
     ; Reload merged services
-    (dorun (pmap #(service/reload! % merged) merged-services)) 
+    (dorun (pmap #(service/reload! % merged) merged-services))
 
     ; Start merged services
     (dorun (pmap service/start! merged-services))
@@ -173,21 +174,76 @@
   (info "Hyperspace core shut down"))
 
 (defn update-index
-  "Updates this core's index with an event. Also publishes to the index pubsub
-  channel."
+  "Updates this core's index with an event."
   [core event]
-  (when (index/update (:index core) event)
-    (when-let [registry (:pubsub core)]
-      (ps/publish! registry "index" event))))
+  (deprecated "update-index is redundant; wrap-index provides pubsub
+              integration now."
+              ((:index core) event)))
+
+(defn wrap-index
+  "Yield a wrapper to an index, exposing the same protocols as well
+   as IFn which will index an event. If a second argument is present
+   it should implement the PubSub interface and will be notified
+   when events are updated in the index."
+  ([source]
+     (wrap-index source nil))
+  ([source registry]
+     (reify
+       Object
+       (equals [this other]
+         (= source other))
+       Index
+       (clear [this]
+         (index/clear source))
+       (delete [this event]
+         (index/delete source event))
+       (delete-exactly [this event]
+         (index/delete-exactly source event))
+       (expire [this]
+         (index/expire source))
+       (search [this query-ast]
+         (index/search source query-ast))
+       (update [this event]
+         (when-not (:time event)
+           (throw (ex-info "cannot index event with no time"
+                           {:event event})))
+         (index/update source event)
+         (when registry
+           (ps/publish! registry "index" event)))
+       (lookup [this host service]
+         (index/lookup source host service))
+
+       clojure.lang.Seqable
+       (seq [this]
+         (seq source))
+
+       ServiceEquiv
+       (equiv? [this other]
+         (service/equiv? source other))
+
+       Service
+       (conflict? [this other]
+         (service/conflict? source other))
+       (reload! [this new-core]
+         (service/reload! source new-core))
+       (start! [this]
+         (service/start! source))
+       (stop! [this]
+         (service/stop! source))
+
+       clojure.lang.IFn
+       (invoke [this event]
+         (index/update this event)))))
+
 
 (defn delete-from-index
   "Deletes similar events from the index. By default, deletes events with the
   same host and service. If a field, or a list of fields, is given, deletes any
   events with matching values for all of those fields.
-  
+
   ; Delete all events in the index with the same host
   (delete-from-index index :host event)
-  
+
   ; Delete all events in the index with the same host and state.
   (delete-from-index index [:host :state] event)"
   ([core event]
@@ -205,10 +261,10 @@
   streamed states have only the host and service copied, current time, and
   state expired. Expired events from the index are also published to the
   \"index\" pubsub channel.
-  
+
   Options:
-  
-  :keep-keys A list of event keys which should be preserved from the indexed 
+
+  :keep-keys A list of event keys which should be preserved from the indexed
              event in the expired event. Defaults to [:host :service], which
              means that when an event expires, its :host and :service are
              copied to a new event, but no other keys are preserved.
