@@ -1792,6 +1792,16 @@
               (last events))))
       (apply sdo children))))
 
+(defn runs-time
+  [len-run field & children]
+  (moving-time-window
+    len-run
+    (smap
+      (fn [events]
+        (if (apply = (map field events))
+          (last events)))
+      (apply sdo children))))
+
 (defn stable
   "A stream which detects stable groups of events over time. Takes a time
   period in seconds, and a function of events. Passes on all events for which

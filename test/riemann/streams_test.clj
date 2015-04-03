@@ -1613,6 +1613,27 @@
                       )
   )
 
+(deftest runs-time-test
+         ;; Zero-width runs
+         (test-stream (runs-time 0 :state)
+                      []
+                      [])
+
+         (test-stream (runs-time 0 :state)
+                      [{:time 1 :state 2} {:time 2 :state 3} {:time 3 :state 4}]
+                      [])
+
+         ;; n-width runs
+         (test-stream (runs-time 3 :state)
+                      [{:state 1 :time 1} {:state 2 :time 2} {:state 3 :time 3}]
+                      [{:state 1 :time 1}])
+
+         (test-stream (runs-time 3 :state)
+                      [{:time 1 :state 4 :metric "5.0"} {:time 2 :state 4 :metric "5.1"} {:time 3 :state 4 :metric "5.2"}]
+                      [{:time 1 :state 4 :metric "5.0"} {:time 2 :state 4 :metric "5.1"} {:time 3 :state 4 :metric "5.2"}]
+                      )
+  )
+
 (deftest moving-time-window-test
          ; Zero-second windows.
          (test-stream (moving-time-window 0) [] [])
